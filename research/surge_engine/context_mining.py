@@ -2,11 +2,12 @@ from pathlib import Path
 import pandas as pd, numpy as np, itertools, json
 DATA=Path('research/surge_engine/data'); OUT=Path('research/surge_engine/results'); OUT.mkdir(parents=True,exist_ok=True)
 
-# Add market breadth + sector relative strength to the strongest price/volume factors.
+# Context mining with hard uniqueness controls.
 parts=[]
 for f in sorted(DATA.glob('kline_*.parquet')):
     x=pd.read_parquet(f,columns=['code','date','open','high','low','close','volume','amount'])
-    x['date']=pd.to_datetime(x['date']); x=x.sort_values(['code','date'])
+    x['date']=pd.to_datetime(x['date']); x['code']=x['code'].astype(str).str.zfill(6)
+    x=x.sort_values(['code','date']).drop_duplicates(['code','date'],keep='last')
     g=x.groupby('code',group_keys=False); c=x.close; h=x.high; l=x.low; v=x.volume
     x['r5']=g.close.pct_change(5); x['r10']=g.close.pct_change(10); x['r20']=g.close.pct_change(20)
     ma20=g.close.transform(lambda s:s.rolling(20).mean()); ma60=g.close.transform(lambda s:s.rolling(60).mean())
@@ -22,12 +23,25 @@ for f in sorted(DATA.glob('kline_*.parquet')):
     x=x[(x.date>='2022-01-04')&(x.date<='2026-03-19')]
     parts.append(x)
 feat=pd.concat(parts,ignore_index=True)
+feat=feat.drop_duplicates(['code','date'],keep='last')
 
-labels=pd.read_parquet(OUT/'labels_all.parquet',columns=['code','date','mfe20','mae20','t20','mfe3','mfe5','mfe8','fail5']); labels.date=pd.to_datetime(labels.date)
+labels=pd.read_parquet(OUT/'labels_all.parquet',columns=['code','date','mfe20','mae20','t20','mfe3','mfe5','mfe8','fail5'])
+labels['date']=pd.to_datetime(labels.date); labels['code']=labels['code'].astype(str).str.zfill(6)
+labels=labels.drop_duplicates(['code','date'],keep='last')
+
 meta=pd.read_parquet(DATA/'stock_list.parquet')
 meta['code']=meta['code'].astype(str).str.zfill(6)
-# Sector column in public dataset is static; use only as an exploratory context factor.
-df=feat.merge(labels,on=['code','date']).merge(meta[['code','sector']],on='code',how='left').replace([np.inf,-np.inf],np.nan)
+# Force one sector mapping per stock. Prefer non-null sector; otherwise UNKNOWN.
+meta=meta[['code','sector']].copy()
+meta['sector']=meta['sector'].fillna('UNKNOWN').astype(str)
+meta=meta.sort_values(['code','sector']).drop_duplicates('code',keep='first')
+
+# Merge with explicit uniqueness assertions.
+df=feat.merge(labels,on=['code','date'],how='inner',validate='one_to_one')
+df=df.merge(meta,on='code',how='left',validate='many_to_one')
+df=df.replace([np.inf,-np.inf],np.nan)
+df=df.drop_duplicates(['code','date'],keep='last')
+assert not df.duplicated(['code','date']).any(), 'duplicate code-date after context merge'
 df=df[(df.close>=3)&(df.amount20>=2e7)&(df.volume>0)].copy()
 
 # Cross-sectional market environment, calculated only from same-day information.
@@ -37,15 +51,20 @@ df['market_median_r5']=df.groupby('date').r5.transform('median')
 df['market_median_r20']=df.groupby('date').r20.transform('median')
 df['market_up_ratio']=df.groupby('date').r5.transform(lambda s:(s>0).mean())
 
-# Sector median returns and stock-vs-sector relative strength.
-sec= df.groupby(['date','sector'],dropna=False).close.median().reset_index().sort_values(['sector','date'])
+# Sector median returns: one row per date-sector, then merge many-to-one.
+sec=(df.groupby(['date','sector'],dropna=False,as_index=False)['close'].median().sort_values(['sector','date']))
 sec['sec_r5']=sec.groupby('sector').close.pct_change(5); sec['sec_r20']=sec.groupby('sector').close.pct_change(20)
-df=df.merge(sec[['date','sector','sec_r5','sec_r20']],on=['date','sector'],how='left')
+sec=sec[['date','sector','sec_r5','sec_r20']].drop_duplicates(['date','sector'])
+df=df.merge(sec,on=['date','sector'],how='left',validate='many_to_one')
 df['sector_rel5']=df.r5-df.sec_r5; df['sector_rel20']=df.r20-df.sec_r20
 
-# Two market regime factors as percentile ranks within date.
+# Cross-sectional percentiles.
 for col in ['market_breadth20','market_median_r5','market_median_r20','market_up_ratio','sector_rel5','sector_rel20']:
-    df[col+'_pct']=df.groupby('date')[col].rank(pct=True)
+    df[col+'_pct']=df.groupby('date')[col].rank(pct=True,method='average')
+
+# Sanity checks: MFE must be finite and not physically absurd after dedupe.
+assert float(df.mfe20.quantile(.9999)) < 5.0, 'MFE20 extreme outlier suggests merge/index corruption'
+assert float(df.mfe20.mean()) < 1.0, 'MFE20 mean suggests merge/index corruption'
 
 train=df[(df.date>='2022-01-04')&(df.date<='2024-12-31')].copy(); valid=df[(df.date>='2025-01-01')&(df.date<='2026-03-19')].copy()
 base_factor=['ma60_gap','ma20_slope','r20','dist60_high','ma20_gap','atr14_pct','vol_ratio','r5']
@@ -53,7 +72,7 @@ ctx=['market_breadth20','market_median_r5','market_median_r20','sector_rel5','se
 factors=base_factor+ctx
 
 def bins(s,f):
-    s=s.dropna(subset=[f]);
+    s=s.dropna(subset=[f])
     q=pd.qcut(s[f],q=8,duplicates='drop')
     return q.cat.categories
 
@@ -69,28 +88,29 @@ def candidates(s,f):
     return sorted(out,key=lambda z:z['train']['score'],reverse=True)[:3]
 
 cand={f:candidates(train,f) for f in factors}
-# Seed with best single rules, beam-search to 4 factors.
 beam=[]
 for f,arr in cand.items():
-    for c in arr: beam.append([(f,c)])
-beam=sorted([(metrics(train) if False else c['train']['score'],r) for r in beam],key=lambda x:x[0],reverse=True)[:50]
+    for c0 in arr: beam.append((c0['train']['score'],[(f,c0)]))
+beam=sorted(beam,key=lambda x:x[0],reverse=True)[:50]
 allrules=[]
+
 def apply(s,r):
     mask=np.ones(len(s),dtype=bool)
-    for f,c in r: mask &= s[f].between(c['lo'],c['hi'],inclusive='both').to_numpy()
+    for f,c0 in r: mask &= s[f].between(c0['lo'],c0['hi'],inclusive='both').to_numpy()
     return s.loc[mask]
+
 for depth in range(1,5):
     new=[]
     for _,r in beam:
         used={f for f,_ in r}
         for f in factors:
             if f in used:continue
-            for c in cand[f]:
-                rr=r+[(f,c)]; tm=metrics(apply(train,rr))
+            for c0 in cand[f]:
+                rr=r+[(f,c0)]; tm=metrics(apply(train,rr))
                 if tm and tm['n']>=500:new.append((tm['score'],rr,tm))
     pool=[]
     for _,r in beam:
-        tm=metrics(apply(train,r));
+        tm=metrics(apply(train,r))
         if tm:pool.append((tm['score'],r,tm))
     pool += new
     pool=sorted(pool,key=lambda x:x[0],reverse=True)[:80]
@@ -108,6 +128,6 @@ def dom(a,b):
     return all(x>=y for x,y in zip(va,vb)) and any(x>y for x,y in zip(va,vb))
 pareto=[r for r in res if not any(dom(o,r) for o in res if o is not r)]
 pareto=sorted(pareto,key=lambda r:(r['valid']['mfe3'],r['valid']['mfe5'],r['valid']['mfe8'],-r['valid']['fail5']),reverse=True)
-out={'factors':factors,'pareto':pareto[:40]}
+out={'factors':factors,'row_count_after_merge':int(len(df)),'unique_code_date':int(df[['code','date']].drop_duplicates().shape[0]),'mfe_mean':float(df.mfe20.mean()),'mfe_p9999':float(df.mfe20.quantile(.9999)),'pareto':pareto[:40]}
 (OUT/'context_mining_summary.json').write_text(json.dumps(out,ensure_ascii=False,indent=2,default=str),encoding='utf-8')
-print(json.dumps({'n_candidates':len(res),'n_pareto':len(pareto),'pareto':pareto[:10]},ensure_ascii=False,indent=2,default=str))
+print(json.dumps({'row_count_after_merge':len(df),'unique_code_date':df[['code','date']].drop_duplicates().shape[0],'mfe_mean':float(df.mfe20.mean()),'mfe_p9999':float(df.mfe20.quantile(.9999)),'n_candidates':len(res),'n_pareto':len(pareto),'pareto':pareto[:10]},ensure_ascii=False,indent=2,default=str))
