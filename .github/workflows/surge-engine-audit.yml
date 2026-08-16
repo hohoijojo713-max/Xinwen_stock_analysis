@@ -12,7 +12,7 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     steps:
       - name: Checkout research branch
         uses: actions/checkout@v4
@@ -43,13 +43,18 @@ jobs:
       - name: Build MFE MAE T20 labels
         run: python research/surge_engine/label_engine.py | tee research/surge_engine/results/label_engine.log
 
+      - name: Mine single factors
+        run: python research/surge_engine/factor_mining.py | tee research/surge_engine/results/factor_mining.log
+
       - name: Upload research artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: surge-engine-step2-labels
+          name: surge-engine-step3-factor-mining
           path: |
             research/surge_engine/results/audit.log
             research/surge_engine/results/label_engine.log
             research/surge_engine/results/label_summary.json
-            research/surge_engine/results/labels_all.parquet
+            research/surge_engine/results/factor_mining.log
+            research/surge_engine/results/factor_mining_summary.json
+            research/surge_engine/results/factor_*_bins.parquet
           retention-days: 14
