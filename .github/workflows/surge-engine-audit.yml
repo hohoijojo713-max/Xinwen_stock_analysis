@@ -12,7 +12,7 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 95
+    timeout-minutes: 110
     steps:
       - name: Checkout research branch
         uses: actions/checkout@v4
@@ -32,7 +32,7 @@ jobs:
           set -euo pipefail
           mkdir -p research/surge_engine/data research/surge_engine/results
           base='https://raw.githubusercontent.com/newbiestring-lang/astock/main'
-          for f in kline_000.parquet kline_002.parquet kline_300.parquet kline_600.parquet kline_688.parquet kline_other.parquet; do
+          for f in kline_000.parquet kline_002.parquet kline_300.parquet kline_600.parquet kline_688.parquet kline_other.parquet stock_list.parquet; do
             echo "Downloading $f"
             curl -L --fail --retry 4 --retry-delay 3 -o "research/surge_engine/data/$f" "$base/$f"
           done
@@ -49,10 +49,13 @@ jobs:
       - name: Mine multi-factor combinations
         run: python research/surge_engine/combination_mining.py | tee research/surge_engine/results/combination_mining.log
 
+      - name: Mine market regime and sector relative strength
+        run: python research/surge_engine/context_mining.py | tee research/surge_engine/results/context_mining.log
+
       - name: Upload research artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: surge-engine-step4-combinations
+          name: surge-engine-step5-context
           path: |
             research/surge_engine/results/audit.log
             research/surge_engine/results/label_engine.log
@@ -61,4 +64,6 @@ jobs:
             research/surge_engine/results/factor_mining_summary.json
             research/surge_engine/results/combination_mining.log
             research/surge_engine/results/combination_mining_summary.json
+            research/surge_engine/results/context_mining.log
+            research/surge_engine/results/context_mining_summary.json
           retention-days: 14
