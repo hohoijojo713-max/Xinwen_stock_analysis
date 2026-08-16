@@ -42,11 +42,11 @@ for code,gp in df.groupby('code',sort=False):
             mfe=hi/entry-1; mae=lo/entry-1
             rows.append({'code':code,'date':feat.date,'mfe':mfe,'mae':mae,'good_surge':int(mfe>=0.03 and mae>-0.05),'prime_surge':int(mfe>=0.05 and mae>-0.05),**vals})
 res=pd.DataFrame(rows)
-cut=pd.Timestamp('2025-01-01'); res['sample']=np.where(res.date<cut,'train','valid')
-base={p:{'n':int((res.sample==p).sum()),'good_rate':float(res.loc[res.sample==p,'good_surge'].mean()),'prime_rate':float(res.loc[res.sample==p,'prime_surge'].mean())} for p in ['train','valid']}
+cut=pd.Timestamp('2025-01-01'); res['sample']=np.where(res['date']<cut,'train','valid')
+base={p:{'n':int((res['sample']==p).sum()),'good_rate':float(res.loc[res['sample']==p,'good_surge'].mean()),'prime_rate':float(res.loc[res['sample']==p,'prime_surge'].mean())} for p in ['train','valid']}
 ranking=[]
 for f in features:
-    train=res[res.sample=='train'].dropna(subset=[f]); valid=res[res.sample=='valid'].dropna(subset=[f])
+    train=res[res['sample']=='train'].dropna(subset=[f]); valid=res[res['sample']=='valid'].dropna(subset=[f])
     bins=train[f].quantile(np.linspace(0,1,11)).drop_duplicates().to_numpy()
     if len(bins)<4: continue
     train=train.copy(); valid=valid.copy(); train['bin']=pd.cut(train[f],bins=bins,include_lowest=True,duplicates='drop'); valid['bin']=pd.cut(valid[f],bins=bins,include_lowest=True,duplicates='drop')
@@ -60,7 +60,7 @@ comb=[]
 for i in range(len(top)):
     for j in range(i+1,len(top)):
         f1,f2=top[i],top[j]; a,b=bestbins[f1]; c,d=bestbins[f2]
-        tr=res[(res.sample=='train')&(res[f1].between(a,b))&(res[f2].between(c,d))]; va=res[(res.sample=='valid')&(res[f1].between(a,b))&(res[f2].between(c,d))]
+        tr=res[(res['sample']=='train')&(res[f1].between(a,b))&(res[f2].between(c,d))]; va=res[(res['sample']=='valid')&(res[f1].between(a,b))&(res[f2].between(c,d))]
         if len(tr)<300 or len(va)<100: continue
         comb.append({'factors':[f1,f2],'train_n':len(tr),'train_good':float(tr.good_surge.mean()),'train_prime':float(tr.prime_surge.mean()),'valid_n':len(va),'valid_good':float(va.good_surge.mean()),'valid_prime':float(va.prime_surge.mean())})
 comb=sorted(comb,key=lambda z:(z['valid_good'],z['valid_prime'],z['valid_n']),reverse=True)[:20]
