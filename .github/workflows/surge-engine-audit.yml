@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p research/surge_engine/data
+          mkdir -p research/surge_engine/data research/surge_engine/results
           base='https://raw.githubusercontent.com/newbiestring-lang/astock/main'
           for f in kline_000.parquet kline_002.parquet kline_300.parquet kline_600.parquet kline_688.parquet kline_other.parquet; do
             echo "Downloading $f"
