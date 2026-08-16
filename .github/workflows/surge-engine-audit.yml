@@ -58,10 +58,13 @@ jobs:
       - name: Analyze post-entry price structures
         run: python research/surge_engine/structure_backtest.py | tee research/surge_engine/results/structure_backtest.log
 
+      - name: Mine pre-entry factors for Good Surge
+        run: python research/surge_engine/good_surge_mining.py | tee research/surge_engine/results/good_surge_mining.log
+
       - name: Upload research artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: surge-engine-step6b-structure
+          name: surge-engine-step7-good-surge
           path: |
             research/surge_engine/results/audit.log
             research/surge_engine/results/label_engine.log
@@ -78,4 +81,6 @@ jobs:
             research/surge_engine/results/structure_backtest.log
             research/surge_engine/results/structure_backtest_summary.json
             research/surge_engine/results/structure_backtest_signals.parquet
+            research/surge_engine/results/good_surge_mining.log
+            research/surge_engine/results/good_surge_mining_summary.json
           retention-days: 14
