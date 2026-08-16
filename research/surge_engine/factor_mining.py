@@ -32,7 +32,6 @@ for f in files:
     x['range_pct']=(h-l)/c; x['close_to_high']=c/h-1
     x['amount20']=g['amount'].transform(lambda s:s.rolling(20).mean())
     x=x[(x.date>='2022-01-04')&(x.date<='2026-03-19')]
-    # load labels from separately-generated parquet later by merge
     parts.append(x)
 
 feat=pd.concat(parts,ignore_index=True)
@@ -40,14 +39,11 @@ labels=pd.read_parquet(OUT/'labels_all.parquet', columns=['code','date','mfe20',
 labels['date']=pd.to_datetime(labels['date'])
 df=feat.merge(labels,on=['code','date'],how='inner')
 df=df.replace([np.inf,-np.inf],np.nan)
-# Baseline liquid universe: price >=3; nonzero turnover/amount; enough history implied by feature availability
-# Keep two universes to detect whether liquidity filtering materially changes base rates.
 df['liquid']=((df['close']>=3)&(df['amount20']>=2e7)&(df['volume']>0)).astype('int8')
 
 def analyze(s, factor):
     s=s.dropna(subset=[factor,'mfe20','mae20']).copy()
     if len(s)<10000:return None
-    # 10 equal-frequency bins; fit thresholds on train only
     s['bin']=pd.qcut(s[factor],q=10,duplicates='drop')
     g=s.groupby('bin',observed=True)
     z=g.agg(n=('mfe20','size'),mfe3=('mfe3','mean'),mfe5=('mfe5','mean'),mfe8=('mfe8','mean'),fail5=('fail5','mean'),avg_mfe=('mfe20','mean'),avg_mae=('mae20','mean'),t20=('t20','mean')).reset_index()
@@ -56,21 +52,18 @@ def analyze(s, factor):
     z['score']=100*z.lift-35*z.fail5+8*z.t20.clip(lower=0)
     z=z.sort_values('score',ascending=False)
     best=z.iloc[0]
-    # monotonicity via Spearman correlation between factor ranks and outcome
-    corr=float(s[factor].rank(pct=True).corr(s['mfe3'],method='spearman'))
+    # Spearman without scipy: Pearson correlation of rank-transformed variables.
+    corr=float(s[factor].rank(pct=True).corr(s['mfe3'].rank(pct=True),method='pearson'))
     return {'factor':factor,'n':len(s),'base_mfe3':base,'spearman_mfe3':corr,'best_bin':str(best['bin']),'best_n':int(best.n),'best_mfe3':float(best.mfe3),'best_mfe5':float(best.mfe5),'best_mfe8':float(best.mfe8),'best_fail5':float(best.fail5),'best_avg_mfe':float(best.avg_mfe),'best_avg_mae':float(best.avg_mae),'best_t20':float(best.t20),'lift':float(best.lift),'score':float(best.score),'bins':z.to_dict(orient='records')}
 
 factors=['r3','r5','r10','r20','ma20_gap','ma60_gap','ma20_slope','dist20_high','dist60_high','atr14_pct','vol_ratio','vol_accel','upvol_ratio','rsi14','dd20','accel','range_pct','close_to_high']
-# Train/validation split by date; thresholds are discovered in train only, then re-evaluated in validation.
 train=df[(df.date>='2022-01-04')&(df.date<='2024-12-31')].copy()
 valid=df[(df.date>='2025-01-01')&(df.date<='2026-03-19')].copy()
-# use liquid train as primary study universe
 train_liq=train[train.liquid==1].copy(); valid_liq=valid[valid.liquid==1].copy()
 results=[]
 for f in factors:
     r=analyze(train_liq,f)
     if r:
-        # validation: compare same quantile bin based on train cutpoints
         sv=train_liq.dropna(subset=[f]); vv=valid_liq.dropna(subset=[f])
         edges=np.unique(sv[f].quantile(np.linspace(0,1,11)).to_numpy())
         if len(edges)>=3:
@@ -83,11 +76,9 @@ for f in factors:
         results.append(r)
 
 results=sorted(results,key=lambda z:(z.get('valid_score',-999),z['score']),reverse=True)
-summary={'train_rows':len(train_liq),'valid_rows':len(valid_liq),'train_base_mfe3':float(train_liq.mfe3.mean()),'valid_base_mfe3':float(valid_liq.mfe3.mean()),'ranking':[{k:r.get(k) for k in ['factor','score','lift','best_mfe3','best_mfe5','best_mfe8','best_fail5','best_t20','valid_score','valid_lift','valid_best_mfe3','valid_best_mfe5','valid_best_mfe8','valid_best_fail5','valid_best_t20','spearman_mfe3']} for r in results]}
+summary={'objective':'P(MFE>=3%) first, then average MFE/P(MFE>=5/8%), then lower P(MAE<=-5%)','train_rows':len(train_liq),'valid_rows':len(valid_liq),'train_base_mfe3':float(train_liq.mfe3.mean()),'valid_base_mfe3':float(valid_liq.mfe3.mean()),'ranking':[{k:r.get(k) for k in ['factor','score','lift','best_mfe3','best_mfe5','best_mfe8','best_fail5','best_t20','spearman_mfe3','valid_score','valid_lift','valid_best_mfe3','valid_best_mfe5','valid_best_mfe8','valid_best_fail5','valid_best_t20']} for r in results]}
 (OUT/'factor_mining_summary.json').write_text(json.dumps(summary,ensure_ascii=False,indent=2,default=str),encoding='utf-8')
 for r in results:
-    for b in r.get('bins',[]):
-        b['factor']=r['factor']
-    if r.get('bins'):
-        pd.DataFrame(r['bins']).to_parquet(OUT/f"factor_{r['factor']}_bins.parquet",index=False)
+    for b in r.get('bins',[]): b['factor']=r['factor']
+    if r.get('bins'): pd.DataFrame(r['bins']).to_parquet(OUT/f"factor_{r['factor']}_bins.parquet",index=False)
 print(json.dumps(summary,ensure_ascii=False,indent=2,default=str))
