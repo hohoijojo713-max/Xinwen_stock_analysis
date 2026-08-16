@@ -12,7 +12,7 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout research branch
         uses: actions/checkout@v4
@@ -40,9 +40,16 @@ jobs:
       - name: Audit data
         run: python research/surge_engine/data_audit.py | tee research/surge_engine/results/audit.log
 
-      - name: Upload audit artifact
+      - name: Build MFE MAE T20 labels
+        run: python research/surge_engine/label_engine.py | tee research/surge_engine/results/label_engine.log
+
+      - name: Upload research artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: surge-engine-data-audit
-          path: research/surge_engine/results/
+          name: surge-engine-step2-labels
+          path: |
+            research/surge_engine/results/audit.log
+            research/surge_engine/results/label_engine.log
+            research/surge_engine/results/label_summary.json
+            research/surge_engine/results/labels_all.parquet
           retention-days: 14
