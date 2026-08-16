@@ -39,48 +39,26 @@ jobs:
 
       - name: Audit data
         run: python research/surge_engine/data_audit.py | tee research/surge_engine/results/audit.log
-
       - name: Build MFE MAE T20 labels
         run: python research/surge_engine/label_engine.py | tee research/surge_engine/results/label_engine.log
-
       - name: Mine single factors
         run: python research/surge_engine/factor_mining.py | tee research/surge_engine/results/factor_mining.log
-
       - name: Mine multi-factor combinations
         run: python research/surge_engine/combination_mining.py | tee research/surge_engine/results/combination_mining.log
-
       - name: Mine market regime and sector relative strength
         run: python research/surge_engine/context_mining.py | tee research/surge_engine/results/context_mining.log
-
       - name: Backtest executable entry modes
         run: python research/surge_engine/executable_entry_backtest.py | tee research/surge_engine/results/executable_entry.log
-
       - name: Analyze post-entry price structures
         run: python research/surge_engine/structure_backtest.py | tee research/surge_engine/results/structure_backtest.log
-
       - name: Mine pre-entry factors for Good Surge
         run: python research/surge_engine/good_surge_mining.py | tee research/surge_engine/results/good_surge_mining.log
+      - name: Final strategy backtest
+        run: python research/surge_engine/final_strategy_backtest.py | tee research/surge_engine/results/final_strategy.log
 
       - name: Upload research artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: surge-engine-step7-good-surge
-          path: |
-            research/surge_engine/results/audit.log
-            research/surge_engine/results/label_engine.log
-            research/surge_engine/results/label_summary.json
-            research/surge_engine/results/factor_mining.log
-            research/surge_engine/results/factor_mining_summary.json
-            research/surge_engine/results/combination_mining.log
-            research/surge_engine/results/combination_mining_summary.json
-            research/surge_engine/results/context_mining.log
-            research/surge_engine/results/context_mining_summary.json
-            research/surge_engine/results/executable_entry.log
-            research/surge_engine/results/executable_entry_summary.json
-            research/surge_engine/results/executable_entry_signals.parquet
-            research/surge_engine/results/structure_backtest.log
-            research/surge_engine/results/structure_backtest_summary.json
-            research/surge_engine/results/structure_backtest_signals.parquet
-            research/surge_engine/results/good_surge_mining.log
-            research/surge_engine/results/good_surge_mining_summary.json
+          name: surge-engine-step8-final
+          path: research/surge_engine/results/
           retention-days: 14
