@@ -31,7 +31,7 @@ for code,gp in df.groupby('code',sort=False):
         if ok:
             future=gp.iloc[i+1:i+21]
             rows.append({'code':code,'date':feat.date,'entry':entry,**vals,'sample':'train' if feat.date<cut else 'valid','future_mfe':float(future.high.max()/entry-1),'future_mae':float(future.low.min()/entry-1)})
-res=pd.DataFrame(rows); train=res[res.sample=='train'].copy(); valid=res[res.sample=='valid'].copy()
+res=pd.DataFrame(rows); train=res[res['sample']=='train'].copy(); valid=res[res['sample']=='valid'].copy()
 base_train=float(((train.future_mfe>=0.03)&(train.future_mae>-0.05)).mean()); base_valid=float(((valid.future_mfe>=0.03)&(valid.future_mae>-0.05)).mean())
 single=[]
 for f in features:
@@ -70,6 +70,6 @@ for rank,c in enumerate(selected,1):
         for sample_name,sig in [('train',train_sig),('valid',valid_sig)]:
             tr=simulate_rule(sig,trail)
             if tr.empty: continue
-            years=max(1e-9,(pd.to_datetime(sig.date.max())-pd.to_datetime(sig.date.min())).days/365.25) if len(sig) else 1.0
+            years=max(1e-9,(pd.to_datetime(sig['date'].max())-pd.to_datetime(sig['date'].min())).days/365.25) if len(sig) else 1.0
             results.append({'rank':rank,'factors':[f1,f2],'ranges':c['ranges'],'trail_pct':trail,'sample':sample_name,'n':len(tr),'annual_trades_est':float(len(tr)/years),'win_rate':float((tr.ret>0).mean()),'avg_ret':float(tr.ret.mean()),'median_ret':float(tr.ret.median()),'cum_compounded':float((1+tr.ret).prod()-1),'stop5_rate':float((tr.reason=='hard_stop').mean()),'protect_rate':float((tr.reason=='protect_1pct').mean()),'trail_rate':float((tr.reason=='trail').mean()),'t20_rate':float((tr.reason=='t20').mean())})
 out={'objective':'Final OOS strategy backtest. Screening fitted on 2022-2024 only; T+1 open entry; initial -5% stop; after +3% set +1% protection; after +5% trail configured percentage; conservative same-day stop precedence. Nullable values skipped safely.','base_train_good':base_train,'base_valid_good':base_valid,'selected_train_rules':selected,'backtest':results}; (OUT/'final_strategy_summary.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8'); print(json.dumps(out,ensure_ascii=False,indent=2))
