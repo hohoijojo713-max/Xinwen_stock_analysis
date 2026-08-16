@@ -12,7 +12,7 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 95
     steps:
       - name: Checkout research branch
         uses: actions/checkout@v4
@@ -46,15 +46,19 @@ jobs:
       - name: Mine single factors
         run: python research/surge_engine/factor_mining.py | tee research/surge_engine/results/factor_mining.log
 
+      - name: Mine multi-factor combinations
+        run: python research/surge_engine/combination_mining.py | tee research/surge_engine/results/combination_mining.log
+
       - name: Upload research artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: surge-engine-step3-factor-mining
+          name: surge-engine-step4-combinations
           path: |
             research/surge_engine/results/audit.log
             research/surge_engine/results/label_engine.log
             research/surge_engine/results/label_summary.json
             research/surge_engine/results/factor_mining.log
             research/surge_engine/results/factor_mining_summary.json
-            research/surge_engine/results/factor_*_bins.parquet
+            research/surge_engine/results/combination_mining.log
+            research/surge_engine/results/combination_mining_summary.json
           retention-days: 14
