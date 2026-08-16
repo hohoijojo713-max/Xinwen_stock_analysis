@@ -55,10 +55,13 @@ jobs:
       - name: Backtest executable entry modes
         run: python research/surge_engine/executable_entry_backtest.py | tee research/surge_engine/results/executable_entry.log
 
+      - name: Analyze post-entry price structures
+        run: python research/surge_engine/structure_backtest.py | tee research/surge_engine/results/structure_backtest.log
+
       - name: Upload research artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: surge-engine-step6-entry
+          name: surge-engine-step6b-structure
           path: |
             research/surge_engine/results/audit.log
             research/surge_engine/results/label_engine.log
@@ -72,4 +75,7 @@ jobs:
             research/surge_engine/results/executable_entry.log
             research/surge_engine/results/executable_entry_summary.json
             research/surge_engine/results/executable_entry_signals.parquet
+            research/surge_engine/results/structure_backtest.log
+            research/surge_engine/results/structure_backtest_summary.json
+            research/surge_engine/results/structure_backtest_signals.parquet
           retention-days: 14
