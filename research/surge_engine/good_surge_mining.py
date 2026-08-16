@@ -7,7 +7,7 @@ for f in sorted(DATA.glob('kline_*.parquet')):
     x=pd.read_parquet(f,columns=['code','date','open','high','low','close','volume','amount','pctChg'])
     x['date']=pd.to_datetime(x['date']); x=x.sort_values(['code','date'])
     g=x.groupby('code',group_keys=False)
-    ma5=g.close.transform(lambda s:s.rolling(5).mean()); ma20=g.close.transform(lambda s:s.rolling(20).mean()); ma60=g.close.transform(lambda s:s.rolling(60).mean())
+    ma20=g.close.transform(lambda s:s.rolling(20).mean()); ma60=g.close.transform(lambda s:s.rolling(60).mean())
     x['r3']=g.close.pct_change(3); x['r5']=g.close.pct_change(5); x['r10']=g.close.pct_change(10); x['r20']=g.close.pct_change(20)
     x['ma20_gap']=x.close/ma20-1; x['ma60_gap']=x.close/ma60-1
     x['ma20_slope']=ma20.groupby(x.code).pct_change(20)
@@ -21,19 +21,27 @@ for f in sorted(DATA.glob('kline_*.parquet')):
     x['upvol_ratio']=np.where(x.pctChg>0,x.volume,0)/g.volume.transform(lambda s:s.rolling(20).mean())
     x=x[(x.date>='2022-01-04')&(x.date<='2026-03-19')].copy(); parts.append(x)
 df=pd.concat(parts,ignore_index=True).sort_values(['code','date']).reset_index(drop=True)
-
-g=df.groupby('code',group_keys=False)
+features=['r3','r5','r10','r20','ma20_gap','ma60_gap','ma20_slope','dist20_high','dist60_high','dd20','atr14_pct','range_pct','close_to_high','vol_ratio','upvol_ratio']
 rows=[]
 for code,gp in df.groupby('code',sort=False):
     gp=gp.reset_index(drop=True)
-    for i in range(max(60,0),len(gp)-21):
-        entry=float(gp.open.iloc[i+1]); hi=float(gp.high.iloc[i+1:i+21].max()); lo=float(gp.low.iloc[i+1:i+21].min())
-        if not np.isfinite(entry) or entry<=0: continue
-        mfe=hi/entry-1; mae=lo/entry-1
-        feat=gp.iloc[i]
-        rows.append({'code':code,'date':feat.date,'mfe':mfe,'mae':mae,'good_surge':int(mfe>=0.03 and mae>-0.05),'prime_surge':int(mfe>=0.05 and mae>-0.05),**{c:float(feat[c]) for c in ['r3','r5','r10','r20','ma20_gap','ma60_gap','ma20_slope','dist20_high','dist60_high','dd20','atr14_pct','range_pct','close_to_high','vol_ratio','upvol_ratio'] if np.isfinite(feat[c])}})
+    for i in range(60,len(gp)-21):
+        try:
+            entry=float(gp.open.iloc[i+1]); hi=float(gp.high.iloc[i+1:i+21].max()); lo=float(gp.low.iloc[i+1:i+21].min())
+        except (TypeError,ValueError): continue
+        if not np.isfinite(entry) or entry<=0 or not np.isfinite(hi) or not np.isfinite(lo): continue
+        feat=gp.iloc[i]; vals={}; valid_row=True
+        for c in features:
+            v=feat[c]
+            if pd.isna(v): valid_row=False; break
+            try: fv=float(v)
+            except (TypeError,ValueError): valid_row=False; break
+            if not np.isfinite(fv): valid_row=False; break
+            vals[c]=fv
+        if valid_row:
+            mfe=hi/entry-1; mae=lo/entry-1
+            rows.append({'code':code,'date':feat.date,'mfe':mfe,'mae':mae,'good_surge':int(mfe>=0.03 and mae>-0.05),'prime_surge':int(mfe>=0.05 and mae>-0.05),**vals})
 res=pd.DataFrame(rows)
-features=['r3','r5','r10','r20','ma20_gap','ma60_gap','ma20_slope','dist20_high','dist60_high','dd20','atr14_pct','range_pct','close_to_high','vol_ratio','upvol_ratio']
 cut=pd.Timestamp('2025-01-01'); res['sample']=np.where(res.date<cut,'train','valid')
 base={p:{'n':int((res.sample==p).sum()),'good_rate':float(res.loc[res.sample==p,'good_surge'].mean()),'prime_rate':float(res.loc[res.sample==p,'prime_surge'].mean())} for p in ['train','valid']}
 ranking=[]
@@ -47,7 +55,6 @@ for f in features:
     lo=float(best['bin'].left); hi=float(best['bin'].right); vv=valid[(valid[f]>=lo)&(valid[f]<=hi)]
     ranking.append({'factor':f,'train_good':float(best.good),'train_prime':float(best.prime),'train_n':int(best.n),'lo':lo,'hi':hi,'valid_good':float(vv.good_surge.mean()) if len(vv) else None,'valid_prime':float(vv.prime_surge.mean()) if len(vv) else None,'valid_n':int(len(vv))})
 ranking=sorted(ranking,key=lambda z:(z['valid_good'] if z['valid_good'] is not None else -1,z['valid_prime'] if z['valid_prime'] is not None else -1,z['valid_n']),reverse=True)
-# Simple train-fitted 2-factor screening from top 8 factors, using top training bin per factor; evaluate combinations on untouched validation.
 top=[x['factor'] for x in ranking[:8]]; bestbins={x['factor']:(x['lo'],x['hi']) for x in ranking[:8]}
 comb=[]
 for i in range(len(top)):
