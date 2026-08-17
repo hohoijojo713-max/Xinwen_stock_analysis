@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'research/surge_engine/august_2026_three_framework_backtest_v2.py'
+      - 'research/surge_engine/run_three_frameworks_v3.py'
       - '.github/workflows/august-2026-three-framework.yml'
   workflow_dispatch:
 
@@ -27,15 +28,25 @@ jobs:
           base='https://raw.githubusercontent.com/newbiestring-lang/astock/main'
           for f in kline_000.parquet kline_002.parquet kline_300.parquet kline_600.parquet kline_688.parquet kline_other.parquet; do
             echo "Downloading $f"
-            curl -L --fail --retry 4 --retry-delay 3 -o "research/surge_engine/data/$f" "$base/$f"
+            curl -L --fail --retry 6 --retry-delay 5 -o "research/surge_engine/data/$f" "$base/$f"
           done
       - name: Run three execution framework backtest
-        run: python research/surge_engine/august_2026_three_framework_backtest_v2.py | tee research/surge_engine/results/august_2026_three_framework.log
+        shell: bash
+        run: |
+          set -euo pipefail
+          python research/surge_engine/run_three_frameworks_v3.py | tee research/surge_engine/results/august_2026_three_framework.log
+      - name: Verify results
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s research/surge_engine/results/august_2026_three_framework_summary.json
+          test -s research/surge_engine/results/august_2026_three_framework_detail.csv
+          echo 'Result files verified.'
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: august-2026-three-framework-backtest-v2
+          name: august-2026-three-framework-backtest-v3
           path: |
             research/surge_engine/results/august_2026_three_framework_summary.json
             research/surge_engine/results/august_2026_three_framework_detail.csv
