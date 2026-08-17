@@ -1,12 +1,8 @@
 {
   "version": 2,
-  "builds": [
-    {"src": "api/index.py", "use": "@vercel/python"},
-    {"src": "apps/dsa-web/package.json", "use": "@vercel/static-build", "config": {"distDir": "dist"}}
-  ],
-  "routes": [
-    {"src": "/api/(.*)", "dest": "/api/index.py"},
-    {"handle": "filesystem"},
-    {"src": "/(.*)", "dest": "/apps/dsa-web/$1"}
+  "buildCommand": "npm --prefix apps/dsa-web run build",
+  "outputDirectory": "static",
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }
