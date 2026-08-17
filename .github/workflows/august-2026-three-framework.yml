@@ -3,14 +3,14 @@ name: August 2026 Three Execution Framework Backtest
 on:
   push:
     paths:
-      - 'research/surge_engine/august_2026_three_framework_backtest.py'
+      - 'research/surge_engine/august_2026_three_framework_backtest_v2.py'
       - '.github/workflows/august-2026-three-framework.yml'
   workflow_dispatch:
 
 jobs:
   backtest:
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,11 +30,12 @@ jobs:
             curl -L --fail --retry 4 --retry-delay 3 -o "research/surge_engine/data/$f" "$base/$f"
           done
       - name: Run three execution framework backtest
-        run: python research/surge_engine/august_2026_three_framework_backtest.py | tee research/surge_engine/results/august_2026_three_framework.log
+        run: python research/surge_engine/august_2026_three_framework_backtest_v2.py | tee research/surge_engine/results/august_2026_three_framework.log
       - name: Upload results
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: august-2026-three-framework-backtest
+          name: august-2026-three-framework-backtest-v2
           path: |
             research/surge_engine/results/august_2026_three_framework_summary.json
             research/surge_engine/results/august_2026_three_framework_detail.csv
