@@ -1,0 +1,42 @@
+name: August 2026 Three Execution Framework Backtest
+
+on:
+  push:
+    paths:
+      - 'research/surge_engine/august_2026_three_framework_backtest.py'
+      - '.github/workflows/august-2026-three-framework.yml'
+  workflow_dispatch:
+
+jobs:
+  backtest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip pandas pyarrow numpy requests
+      - name: Download research dataset through 2026-04-03
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p research/surge_engine/data research/surge_engine/results
+          base='https://raw.githubusercontent.com/newbiestring-lang/astock/main'
+          for f in kline_000.parquet kline_002.parquet kline_300.parquet kline_600.parquet kline_688.parquet kline_other.parquet; do
+            echo "Downloading $f"
+            curl -L --fail --retry 4 --retry-delay 3 -o "research/surge_engine/data/$f" "$base/$f"
+          done
+      - name: Run three execution framework backtest
+        run: python research/surge_engine/august_2026_three_framework_backtest.py | tee research/surge_engine/results/august_2026_three_framework.log
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: august-2026-three-framework-backtest
+          path: |
+            research/surge_engine/results/august_2026_three_framework_summary.json
+            research/surge_engine/results/august_2026_three_framework_detail.csv
+            research/surge_engine/results/august_2026_three_framework.log
+          retention-days: 30
