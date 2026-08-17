@@ -2,7 +2,7 @@ name: Surge Engine - August 2026 MTD Backtest
 
 on:
   push:
-    branches: [research/surge-engine-v1]
+    branches: [main, research/surge-engine-v1]
     paths:
       - research/surge_engine/august_2026_mtd_backtest.py
       - .github/workflows/august-2026-mtd-backtest.yml
