@@ -31,7 +31,6 @@ const vendorChunkByPackage: Record<string, string> = {
   reselect: 'vendor-charts',
   'tiny-invariant': 'vendor-charts',
   'use-sync-external-store': 'vendor-charts',
-  // Markdown renderer dependencies that are not covered by prefix rules below.
   'react-markdown': 'vendor-markdown',
   unified: 'vendor-markdown',
   vfile: 'vendor-markdown',
@@ -60,29 +59,18 @@ const getVendorPackageName = (id: string): string | undefined => {
   const normalizedId = id.replace(/\\/g, '/')
   const marker = '/node_modules/'
   const markerIndex = normalizedId.lastIndexOf(marker)
-  if (markerIndex === -1) {
-    return undefined
-  }
+  if (markerIndex === -1) return undefined
 
   const packagePath = normalizedId.slice(markerIndex + marker.length)
   const [firstSegment, secondSegment] = packagePath.split('/')
-  if (!firstSegment) {
-    return undefined
-  }
-
-  if (firstSegment.startsWith('@')) {
-    return secondSegment ? `${firstSegment}/${secondSegment}` : undefined
-  }
-
+  if (!firstSegment) return undefined
+  if (firstSegment.startsWith('@')) return secondSegment ? `${firstSegment}/${secondSegment}` : undefined
   return firstSegment
 }
 
 const getVendorChunkName = (id: string): string | undefined => {
   const packageName = getVendorPackageName(id)
-  if (!packageName) {
-    return undefined
-  }
-
+  if (!packageName) return undefined
   return (
     vendorChunkByPackage[packageName]
     ?? vendorChunkByPackagePrefix.find(([prefix]) => packageName.startsWith(prefix))?.[1]
@@ -90,7 +78,6 @@ const getVendorChunkName = (id: string): string | undefined => {
   )
 }
 
-// https://vite.dev/config/
 export default defineConfig({
   define: {
     __APP_PACKAGE_VERSION__: JSON.stringify(packageJson.version ?? '0.0.0'),
@@ -98,30 +85,20 @@ export default defineConfig({
   },
   plugins: [
     tailwindcss(),
-    react({
-      babel: {
-        plugins: [['babel-plugin-react-compiler']],
-      },
-    }),
+    react({ babel: { plugins: [['babel-plugin-react-compiler']] } }),
   ],
   server: {
-    host: '0.0.0.0',  // 允许公网访问
-    port: 5173,       // 默认端口
+    host: '0.0.0.0',
+    port: 5173,
     proxy: {
-      '/api': {
-        target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-      },
+      '/api': { target: 'http://127.0.0.1:8000', changeOrigin: true },
     },
   },
   build: {
-    // 打包输出到项目根目录的 static 文件夹
-    outDir: path.resolve(__dirname, '../../static'),
+    // Vercel builds from apps/dsa-web; use the standard dist directory there.
+    // Local/Docker builds keep the existing repository-level static output.
+    outDir: process.env.VERCEL ? 'dist' : path.resolve(__dirname, '../../static'),
     emptyOutDir: true,
-    rollupOptions: {
-      output: {
-        manualChunks: getVendorChunkName,
-      },
-    },
+    rollupOptions: { output: { manualChunks: getVendorChunkName } },
   },
 })
