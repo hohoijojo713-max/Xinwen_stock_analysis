@@ -1,0 +1,53 @@
+name: Surge Engine - August 2026 MTD Backtest
+
+on:
+  push:
+    branches: [research/surge-engine-v1]
+    paths:
+      - research/surge_engine/august_2026_mtd_backtest.py
+      - .github/workflows/august-2026-mtd-backtest.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip pandas pyarrow numpy requests
+
+      - name: Download research dataset through 2026-04-03
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p research/surge_engine/data research/surge_engine/results
+          base='https://raw.githubusercontent.com/newbiestring-lang/astock/main'
+          for f in kline_000.parquet kline_002.parquet kline_300.parquet kline_600.parquet kline_688.parquet kline_other.parquet; do
+            echo "Downloading $f"
+            curl -L --fail --retry 4 --retry-delay 3 -o "research/surge_engine/data/$f" "$base/$f"
+          done
+
+      - name: Run August 2026 MTD trade-by-trade backtest
+        run: python research/surge_engine/august_2026_mtd_backtest.py | tee research/surge_engine/results/august_2026_mtd_backtest.log
+
+      - name: Upload August 2026 MTD results
+        uses: actions/upload-artifact@v4
+        with:
+          name: august-2026-mtd-surge-backtest
+          path: |
+            research/surge_engine/results/august_2026_mtd_summary.json
+            research/surge_engine/results/august_2026_mtd_trade_detail.csv
+            research/surge_engine/results/august_2026_mtd_backtest.log
+          retention-days: 30
