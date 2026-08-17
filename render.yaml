@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: a-share-surge-engine
+    runtime: docker
+    region: singapore
+    plan: starter
+    branch: research/surge-engine-v1
+    autoDeployTrigger: checksPass
+    dockerfilePath: ./docker/Dockerfile
+    dockerCommand: /bin/sh -c 'python main.py --serve-only --host 0.0.0.0 --port ${PORT:-8000}'
+    healthCheckPath: /api/health
+    envVars:
+      - key: WEBUI_HOST
+        value: 0.0.0.0
+      - key: DATABASE_PATH
+        value: /app/data/stock_analysis.db
+      - key: ENV_FILE
+        value: /app/deploy/render.env
+      - key: TRUST_X_FORWARDED_FOR
+        value: "true"
+    disk:
+      name: surge-engine-data
+      mountPath: /app/data
+      sizeGB: 2
